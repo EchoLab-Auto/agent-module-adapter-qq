@@ -28,7 +28,7 @@ QQ / OneBot v11 适配器——独立进程的适配器插件（stdio 协议，�
 ```
 
 从 echo-fabric-arch v0.14 起，插件实现通用 `PluginHandler`，以
-`Contribution::Custom { custom_kind: "echo-agent.instance", name, payload }`
+`Contribution::Custom { kind: "echo-agent.instance", name, payload }`
 注册实例；DTO 位于 `plugin_contract.rs`，不再使用框架已删除的 `InstancePlugin`
 与 `InstanceHandler`。
 
