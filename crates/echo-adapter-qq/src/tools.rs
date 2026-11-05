@@ -10,7 +10,8 @@
 //!
 //! [`InstanceContribution::tools`]: echo_plugin_api::InstanceContribution::tools
 
-use echo_plugin_sdk::echo_plugin_api::{InvokeOutcome, ToolContribution};
+use crate::plugin_contract::ToolContribution;
+use echo_plugin_sdk::InvokeOutcome;
 use serde_json::{json, Value};
 
 use crate::plugin::{error_outcome, ok_result};

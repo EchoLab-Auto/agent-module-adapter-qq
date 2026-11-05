@@ -10,7 +10,7 @@ QQ / OneBot v11 适配器——独立进程的适配器插件（stdio 协议，�
 | `crates/echo-core` | OneBot v11 协议类型（事件 / 消息段 / action） |
 | `crates/echo-server` | 反向 WebSocket 服务端与 handler 分发 |
 
-插件内部模块（`crates/echo-adapter-qq/src/`）：`types.rs`（领域词汇：入站消息 / 出站目标 / 事件 / 状态）、`filter.rs` + `config_store.rs`（门控过滤管道与 TOML 持久化）、`media.rs`（宿主媒体登记通道抽象）、`plugin.rs`（`AdapterPlugin` 实现）。全部为插件自有代码，不再依赖任何 echo-* 中间 crate。
+插件内部模块（`crates/echo-adapter-qq/src/`）：`types.rs`（领域词汇：入站消息 / 出站目标 / 事件 / 状态）、`filter.rs` + `config_store.rs`（门控过滤管道与 TOML 持久化）、`media.rs`（宿主媒体登记通道抽象）、`plugin.rs`（`PluginHandler` 实现）。全部为插件自有代码，不再依赖任何 echo-* 中间 crate。
 
 ## 插件形态（P1.7b）
 
@@ -27,6 +27,11 @@ QQ / OneBot v11 适配器——独立进程的适配器插件（stdio 协议，�
 }
 ```
 
+从 echo-fabric-arch v0.14 起，插件实现通用 `PluginHandler`，以
+`Contribution::Custom { custom_kind: "echo-agent.instance", name, payload }`
+注册实例；DTO 位于 `plugin_contract.rs`，不再使用框架已删除的 `InstancePlugin`
+与 `InstanceHandler`。
+
 op 路由（`Invoke("qq:<op>")`）：
 
 | op | 载荷 | 返回 |
@@ -38,9 +43,9 @@ op 路由（`Invoke("qq:<op>")`）：
 | `get_groups` / `get_friends` | `{}` | `{groups\|friends: [{id, name}]}` |
 | `custom` | `{method, payload}` | 平台动作透传（门控 / 名单 / owner / 登录二维码 / `instance_info`…） |
 
-入站消息与连接态经宿主服务 `adapter_host` 回呼（`deliver_message` /
+入站消息与连接态经宿主服务 `core_api` 回呼（`submit_input` /
 `report_state`；反压 `backpressure` 自动小步重试）。
-入站图片下载后经 `adapter_host.store_media` 登记到宿主媒体库（写临时文件传
+入站图片下载后经 `core_api.store_media` 登记到宿主媒体库（写临时文件传
 path，字节不过协议帧），链路上只留 `/media/<id>` 引用。
 
 ## 迁出进度（2026-10 完成）
@@ -62,7 +67,7 @@ ECHO_LOG=debug ./target/debug/echo-adapter-qq   # 手动调试（日志走 stder
 ```
 
 `echo-plugin-sdk` 来自独立框架仓 [echo-fabric-arch](https://github.com/EchoLab-Auto/echo-fabric-arch)，
-按 tag 钉住（`tag = "v0.1.0"`），`Cargo.lock` 进一步钉死 rev。升级 SDK 只需改这一行 tag。
+按 tag 钉住（`tag = "v0.14.0"`），`Cargo.lock` 进一步钉死 rev。升级 SDK 只需改这一行 tag。
 `sdk` 已 re-export `echo_plugin_api`，本仓不需要单独声明协议 crate。
 
 ## 部署

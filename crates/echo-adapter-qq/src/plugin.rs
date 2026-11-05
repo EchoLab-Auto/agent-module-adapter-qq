@@ -1,5 +1,5 @@
 //! 适配器插件入口（P1.7b）：把 [`QqAdapter`] 接到 `echo-plugin-sdk` 的
-//! `InstancePlugin` 接口上——宿主经 stdio 拉起本进程后，用
+//! `PluginHandler` 接口上——宿主经 stdio 拉起本进程后，用
 //! `Invoke("<实例名>:<op>")` 寻址；入站消息与连接态经 `core_api`
 //! 宿主服务回呼。
 //!
@@ -22,8 +22,9 @@
 
 use std::sync::{Arc, OnceLock};
 
-use echo_plugin_sdk::echo_plugin_api::{InstanceCapabilities, InstanceContribution, InvokeOutcome};
-use echo_plugin_sdk::{HostCallError, HostClient, InstancePlugin};
+use crate::plugin_contract::{InstanceCapabilities, InstanceContribution};
+use echo_plugin_sdk::{Contribution, InvokeOutcome, InvokeRequest};
+use echo_plugin_sdk::{HostCallError, HostClient, PluginHandler};
 use serde_json::{json, Value};
 
 use crate::config_store::ConfigStore;
@@ -226,8 +227,66 @@ impl Default for PluginConfig {
     }
 }
 
+impl QqPlugin {
+    fn instance(&self) -> InstanceContribution {
+        let (name, display_name) = match self.state.adapter.get() {
+            Some(adapter) => (
+                adapter.name().to_string(),
+                adapter.display_name().to_string(),
+            ),
+            // 未配置（SDK 必先调 configure；此处仅防御）：占位身份。
+            None => (DEFAULT_INSTANCE_NAME.to_string(), "QQ / OneBot".to_string()),
+        };
+        InstanceContribution {
+            name,
+            platform: "qq".to_string(),
+            display_name,
+            capabilities: InstanceCapabilities {
+                send_text: true,
+                send_media: true,
+                groups: true,
+                friends: true,
+                gating: true,
+                login: true,
+            },
+            // 插件静态元数据（泛化 P1）：UI 描述符 / 会话标签 / 配置 Schema
+            // ——宿主 AdapterList 原样透传给 Panel 通用渲染器（01a §2）。
+            config_schema: Some(ui::config_schema()),
+            ui: Some(ui::ui_descriptor()),
+            session_labels: Some(ui::session_labels()),
+            // 工具声明（平台语义在此；宿主 Core 不认识任何工具名）。
+            tools: crate::tools::contributions(),
+        }
+    }
+
+    async fn invoke_op(&self, op: &str, payload: Value) -> InvokeOutcome {
+        let Some(adapter) = self.state.adapter.get().cloned() else {
+            return error_outcome("not_configured", "qq plugin received no config");
+        };
+        // `custom` 是宿主侧的**统一入口**：Core 的工具桥
+        // （`instance_tools::invoke_management`）与管理面（`InvokeInstanceOp`）
+        // 都经 `invoke_custom(<method>, <payload>)` 下发，线上即
+        // `Invoke("<instance>:custom", {method, payload})`。因此 method 可能是
+        // 工具名、生命周期 op、出站 op 或平台管理方法之一——三者走**同一张
+        // 分发表**（[`Self::dispatch`]），先命中者生效。
+        if op == "custom" {
+            let Some(method) = payload.get("method").and_then(Value::as_str) else {
+                return error_outcome("invalid_payload", "custom requires `method`");
+            };
+            let inner = payload.get("payload").cloned().unwrap_or(Value::Null);
+            let outcome = self.dispatch(&adapter, method, inner, true).await;
+            // 管理面状态可能已变（写方法）：推送快照，宿主缓存随之刷新。
+            self.push_ui_state();
+            return outcome;
+        }
+        // 直连 op（Core 内部生命周期：`RemoteInstance::start()` 等）。
+        self.dispatch(&adapter, op, payload, false).await
+    }
+
+}
+
 #[echo_plugin_sdk::async_trait]
-impl InstancePlugin for QqPlugin {
+impl PluginHandler for QqPlugin {
     async fn configure(&self, config: Value) -> Result<(), String> {
         let mut parsed: PluginConfig = if config.is_null() {
             PluginConfig::default()
@@ -293,59 +352,20 @@ impl InstancePlugin for QqPlugin {
         Ok(())
     }
 
-    fn instance(&self) -> InstanceContribution {
-        let (name, display_name) = match self.state.adapter.get() {
-            Some(adapter) => (
-                adapter.name().to_string(),
-                adapter.display_name().to_string(),
-            ),
-            // 未配置（SDK 必先调 configure；此处仅防御）：占位身份。
-            None => (DEFAULT_INSTANCE_NAME.to_string(), "QQ / OneBot".to_string()),
-        };
-        InstanceContribution {
-            name,
-            platform: "qq".to_string(),
-            display_name,
-            capabilities: InstanceCapabilities {
-                send_text: true,
-                send_media: true,
-                groups: true,
-                friends: true,
-                gating: true,
-                login: true,
-            },
-            // 插件静态元数据（泛化 P1）：UI 描述符 / 会话标签 / 配置 Schema
-            // ——宿主 AdapterList 原样透传给 Panel 通用渲染器（01a §2）。
-            config_schema: Some(ui::config_schema()),
-            ui: Some(ui::ui_descriptor()),
-            session_labels: Some(ui::session_labels()),
-            // 工具声明（平台语义在此；宿主 Core 不认识任何工具名）。
-            tools: crate::tools::contributions(),
-        }
+    fn contributions(&self) -> Vec<Contribution> {
+        vec![self.instance().into_custom()]
     }
 
-    async fn invoke_op(&self, op: &str, payload: Value) -> InvokeOutcome {
-        let Some(adapter) = self.state.adapter.get().cloned() else {
-            return error_outcome("not_configured", "qq plugin received no config");
+    async fn invoke(&self, req: InvokeRequest) -> InvokeOutcome {
+        let instance = self.instance().name;
+        let prefix = format!("{instance}:");
+        let Some(op) = req.contribution.strip_prefix(&prefix) else {
+            return error_outcome(
+                "unknown_contribution",
+                format!("unknown qq operation: {}", req.contribution),
+            );
         };
-        // `custom` 是宿主侧的**统一入口**：Core 的工具桥
-        // （`instance_tools::invoke_management`）与管理面（`InvokeInstanceOp`）
-        // 都经 `invoke_custom(<method>, <payload>)` 下发，线上即
-        // `Invoke("<instance>:custom", {method, payload})`。因此 method 可能是
-        // 工具名、生命周期 op、出站 op 或平台管理方法之一——三者走**同一张
-        // 分发表**（[`Self::dispatch`]），先命中者生效。
-        if op == "custom" {
-            let Some(method) = payload.get("method").and_then(Value::as_str) else {
-                return error_outcome("invalid_payload", "custom requires `method`");
-            };
-            let inner = payload.get("payload").cloned().unwrap_or(Value::Null);
-            let outcome = self.dispatch(&adapter, method, inner, true).await;
-            // 管理面状态可能已变（写方法）：推送快照，宿主缓存随之刷新。
-            self.push_ui_state();
-            return outcome;
-        }
-        // 直连 op（Core 内部生命周期：`RemoteInstance::start()` 等）。
-        self.dispatch(&adapter, op, payload, false).await
+        self.invoke_op(op, req.payload).await
     }
 
     async fn on_ready(&self, host: HostClient) {
@@ -796,7 +816,7 @@ mod tests {
         Contribution, Hello, HostCallOutcome, HostCallResult, HostToPlugin, Invoke, PluginToHost,
         PROTOCOL_NAME, PROTOCOL_VERSION,
     };
-    use echo_plugin_sdk::{serve_io_with, InstanceHandler, ServeOptions};
+    use echo_plugin_sdk::{serve_io_with, ServeOptions};
     use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
 
     /// 假宿主：帧读写 + 手机会话（`serve_io_with` 的客户端侧）。
@@ -811,7 +831,7 @@ mod tests {
             let (reader, writer) = tokio::io::split(server);
             let handle = plugin.clone();
             let session = tokio::spawn(serve_io_with(
-                InstanceHandler::new(plugin),
+                plugin,
                 ServeOptions::default(),
                 reader,
                 writer,
@@ -859,11 +879,15 @@ mod tests {
             assert!(matches!(self.recv().await, PluginToHost::Welcome(_)));
             match self.recv().await {
                 PluginToHost::Register(register) => {
-                    let adapter = register
+                    let adapter: InstanceContribution = register
                         .contributions
                         .iter()
                         .find_map(|c| match c {
-                            Contribution::PluginInstance(a) => Some(a),
+                            Contribution::Custom { kind, payload, .. }
+                                if kind == crate::plugin_contract::INSTANCE_KIND =>
+                            {
+                                serde_json::from_value(payload.clone()).ok()
+                            }
                             _ => None,
                         })
                         .expect("adapter contribution registered");
