@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
-# echo-adapter-qq 部署脚本：构建 → 安装 → 重启 Core → 健康检查
+# agent-module-adapter-qq 部署脚本：构建 → 安装 → 重启 Core → 健康检查
 #
-# 把本仓库构建的 `echo-adapter-qq` 模块二进制部署到 EchoAgentCore 的模块
-# 约定目录（~/.local/libexec/echo-agent-core/modules/echo-adapter-qq/），并
+# 把本仓库构建的 `agent-module-adapter-qq` 模块二进制部署到 EchoAgentCore 的模块
+# 约定目录（~/.local/libexec/echo-agent-core/modules/agent-module-adapter-qq/），并
 # （默认）重启 Core 使其以新二进制运行、等待 NapCat 反向 WS 自动重连。
 #
 # 与 Core 自更新脚本（~/.local/libexec/echo-agent-core/update.sh）对齐：
@@ -28,7 +28,7 @@ CORE_SERVICE=${ECHO_CORE_SERVICE:-echo-agent-core.service}
 CORE_STATE_DIR="$STATE_HOME/echo-agent-core"
 LOCK_FILE="$CORE_STATE_DIR/update.lock"
 CORE_CONFIG="$CONFIG_HOME/echo-agent-core/core.toml"
-DEFAULT_TARGET="$PREFIX/libexec/echo-agent-core/modules/echo-adapter-qq/echo-adapter-qq"
+DEFAULT_TARGET="$PREFIX/libexec/echo-agent-core/modules/agent-module-adapter-qq/agent-module-adapter-qq"
 
 REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 
@@ -51,13 +51,13 @@ usage() {
     cat <<'EOF'
 用法：scripts/deploy.sh [选项]
 
-构建本仓库的 echo-adapter-qq 模块并部署到 Core 模块目录；默认重启 Core
+构建本仓库的 agent-module-adapter-qq 模块并部署到 Core 模块目录；默认重启 Core
 并等待 QQ 恢复。选项：
 
   --no-build        跳过 cargo 构建，直接部署已有产物（配合 --binary 使用）
-  --binary <path>   构建产物路径（缺省 <仓库>/target/release/echo-adapter-qq）
+  --binary <path>   构建产物路径（缺省 <仓库>/target/release/agent-module-adapter-qq）
   --target <path>   模块安装路径（缺省读 core.toml 的 [adapters.qq.module] command，
-                    兜底 ~/.local/libexec/echo-agent-core/modules/echo-adapter-qq/echo-adapter-qq）
+                    兜底 ~/.local/libexec/echo-agent-core/modules/agent-module-adapter-qq/agent-module-adapter-qq）
   --no-restart      仅替换二进制，不重启 Core（下次 Core 启动后生效）
   --rollback        回滚：以 <target>.rollback 覆盖安装并（默认）重启 Core
   --check           只读健康检查（安装状态 / Core / 模块进程 / QQ 连接）
@@ -138,7 +138,7 @@ PY
 }
 
 TARGET=$(resolve_target)
-BINARY=${OPT_BINARY:-"$REPO_ROOT/target/release/echo-adapter-qq"}
+BINARY=${OPT_BINARY:-"$REPO_ROOT/target/release/agent-module-adapter-qq"}
 
 # ── 基础工具函数 ─────────────────────────────────────────────────────────────
 service_known()  { systemctl --user cat "$CORE_SERVICE" >/dev/null 2>&1; }
@@ -501,7 +501,7 @@ do_rollback() {
 
 # ── 部署模式 ─────────────────────────────────────────────────────────────────
 do_deploy() {
-    echo "== echo-adapter-qq 部署 =="
+    echo "== agent-module-adapter-qq 部署 =="
     echo "仓库: $REPO_ROOT"
     echo "目标: $TARGET"
 
@@ -509,7 +509,7 @@ do_deploy() {
     if (( OPT_BUILD )); then
         step "构建 release 二进制"
         command -v cargo >/dev/null 2>&1 || die "未找到 cargo（请先安装 Rust 工具链）"
-        (cd "$REPO_ROOT" && cargo build --release -p echo-adapter-qq)
+        (cd "$REPO_ROOT" && cargo build --release -p agent-module-adapter-qq)
     fi
     [[ -x $BINARY ]] || die "构建产物不存在或不可执行：$BINARY（先运行不带 --no-build，或检查 --binary）"
 

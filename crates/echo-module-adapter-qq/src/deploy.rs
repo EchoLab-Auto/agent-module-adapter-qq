@@ -228,7 +228,7 @@ pub fn auto_compose_path(data_dir: Option<&Path>, id: &str) -> Option<String> {
 /// 单个实例的 compose 内容（独立容器名 / 端口 / 数据卷）。
 pub fn render_compose(id: &str, ports: &Ports) -> String {
     format!(
-        r#"# 由 echo-adapter-qq 生成（实例 `{id}`）；手动改动会被下次启动覆盖。
+        r#"# 由 agent-module-adapter-qq 生成（实例 `{id}`）；手动改动会被下次启动覆盖。
 services:
   napcat-{id}:
     container_name: echo-napcat-{id}

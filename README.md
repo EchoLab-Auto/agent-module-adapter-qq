@@ -1,4 +1,4 @@
-# echo-adapter-qq
+# agent-module-adapter-qq
 
 QQ / OneBot v11 适配器——独立进程的适配器模块（stdio 协议，见 EchoAgentCore `document/adapter-module.md`）。
 
@@ -6,15 +6,15 @@ QQ / OneBot v11 适配器——独立进程的适配器模块（stdio 协议，�
 
 | 路径 | 内容 |
 |---|---|
-| `crates/echo-adapter-qq` | 适配器主体：反向 WS 接入、NapCat 容器管理、门控 / 过滤、事件转换、模块入口 |
+| `crates/agent-module-adapter-qq` | 适配器主体：反向 WS 接入、NapCat 容器管理、门控 / 过滤、事件转换、模块入口 |
 | `crates/echo-core` | OneBot v11 协议类型（事件 / 消息段 / action） |
 | `crates/echo-server` | 反向 WebSocket 服务端与 handler 分发 |
 
-模块内部模块（`crates/echo-adapter-qq/src/`）：`types.rs`（领域词汇：入站消息 / 出站目标 / 事件 / 状态）、`filter.rs` + `config_store.rs`（门控过滤管道与 TOML 持久化）、`media.rs`（宿主媒体登记通道抽象）、`module.rs`（`ModuleHandler` 实现）。全部为模块自有代码，不再依赖任何 echo-* 中间 crate。
+模块内部模块（`crates/agent-module-adapter-qq/src/`）：`types.rs`（领域词汇：入站消息 / 出站目标 / 事件 / 状态）、`filter.rs` + `config_store.rs`（门控过滤管道与 TOML 持久化）、`media.rs`（宿主媒体登记通道抽象）、`module.rs`（`ModuleHandler` 实现）。全部为模块自有代码，不再依赖任何 echo-* 中间 crate。
 
 ## 模块形态（P1.7b）
 
-二进制 `echo-adapter-qq` 经 stdio 承载协议帧（4 字节 LE 长度前缀 + JSON）。
+二进制 `agent-module-adapter-qq` 经 stdio 承载协议帧（4 字节 LE 长度前缀 + JSON）。
 宿主下发配置（`Hello.config`）：
 
 ```jsonc
@@ -54,7 +54,7 @@ path，字节不过协议帧），链路上只留 `/media/<id>` 引用。
 - [x] P1.7b 模块入口：`AdapterModule` 实现 + `serve_adapter_stdio`；握手 / op 路由 / 入站投递全链路测试 + 真实进程冒烟
 - [x] P1.7c 去 vendor：领域词汇 / filter / ConfigStore 收归模块自有（trait 退役为固有方法）；入站图片走宿主 `store_media`；`vendor/` 已删除，仅依赖 `echo-module-sdk` + 传输 crate（`echo-core` / `echo-server`）
 - [x] P1.8 宿主装配：Core 按实例组装 `Hello.config` 拉起本模块；入站 worker / 状态转发 / 工具管理面路由；真实 core + 真模块进程 + 真 NapCat 连接冒烟
-- [x] P1.9 宿主收尾：命令域迁移（模块侧标注 `metadata.sender_role`）、宿主内置 QQ 装配删除——**本仓库的 `crates/echo-core` / `crates/echo-server` / `crates/echo-adapter-qq` 为唯一代码源**（宿主工作区已删除同名 crate）
+- [x] P1.9 宿主收尾：命令域迁移（模块侧标注 `metadata.sender_role`）、宿主内置 QQ 装配删除——**本仓库的 `crates/echo-core` / `crates/echo-server` / `crates/agent-module-adapter-qq` 为唯一代码源**（宿主工作区已删除同名 crate）
 
 > 宿主侧操作手册（配置 / op 路由 / 回呼协议）见 EchoAgentCore 仓库的
 > `document/adapter-module.md`。
@@ -63,7 +63,7 @@ path，字节不过协议帧），链路上只留 `/media/<id>` 引用。
 
 ```bash
 cargo test --workspace
-ECHO_LOG=debug ./target/debug/echo-adapter-qq   # 手动调试（日志走 stderr）
+ECHO_LOG=debug ./target/debug/agent-module-adapter-qq   # 手动调试（日志走 stderr）
 ```
 
 `echo-module-sdk` 来自独立框架仓 [echo-fabric-arch](https://github.com/EchoLab-Auto/echo-fabric-arch)，
@@ -84,7 +84,7 @@ scripts/deploy.sh --help       # 全部选项
 `<target>.rollback` 备份、与 Core 自更新共用 `update.lock`、重启后等待 NapCat
 自动重连（40s 窗口，超时才 `docker restart` 兜底）。安装路径缺省读
 `core.toml` 的 `[adapters.qq.module] command`，兜底约定目录
-`~/.local/libexec/echo-agent-core/modules/echo-adapter-qq/echo-adapter-qq`。
+`~/.local/libexec/echo-agent-core/modules/agent-module-adapter-qq/agent-module-adapter-qq`。
 
 > 注意：若在 Core 服务的 cgroup 内运行（例如经 Agent 工具调用），`restart` 会
 > 连带终止脚本本身（验证与自动回滚不会执行）——请在独立终端运行，或用

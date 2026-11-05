@@ -259,7 +259,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "echo-adapter-qq"
+name = "echo-core"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "echo-module-adapter-qq"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -283,15 +292,6 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "wiremock",
-]
-
-[[package]]
-name = "echo-core"
-version = "0.1.0"
-dependencies = [
- "proptest",
- "serde",
- "serde_json",
 ]
 
 [[package]]

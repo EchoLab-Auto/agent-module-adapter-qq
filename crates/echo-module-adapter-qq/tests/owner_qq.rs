@@ -2,8 +2,8 @@
 
 mod common;
 
-use echo_adapter_qq::config::QqAdapterConfig;
-use echo_adapter_qq::QqAdapter;
+use echo_module_adapter_qq::config::QqAdapterConfig;
+use echo_module_adapter_qq::QqAdapter;
 
 #[test]
 fn set_owner_qq_updates_runtime_value_and_persists() {
@@ -38,7 +38,7 @@ fn set_owner_qq_persists_through_config_store() {
         ..Default::default()
     };
     let adapter = QqAdapter::new(config);
-    adapter.set_config_store(echo_adapter_qq::config_store::ConfigStore::new(
+    adapter.set_config_store(echo_module_adapter_qq::config_store::ConfigStore::new(
         file.path().to_path_buf(),
     ));
     adapter.set_owner_qq(777);
