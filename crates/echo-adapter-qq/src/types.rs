@@ -1,9 +1,9 @@
-//! QQ 适配器插件的领域词汇（P1.7c）：入站消息 / 出站目标 / 事件 / 错误与状态。
+//! QQ 适配器模块的领域词汇（P1.7c）：入站消息 / 出站目标 / 事件 / 错误与状态。
 //!
-//! 这些类型原属宿主 `echo-defs` / `echo-adapter` 的同名类型；插件化后归插件
-//! 自有（不再随宿主 crate 漂移）。线协议一侧由 `echo-plugin-api`
+//! 这些类型原属宿主 `echo-defs` / `echo-adapter` 的同名类型；模块化后归模块
+//! 自有（不再随宿主 crate 漂移）。线协议一侧由 `echo-module-api`
 //! （`AdapterMessage` / `AdapterTarget` / `AdapterChannel`）承载，两侧转换
-//! 收敛在 `plugin.rs` 边界。
+//! 收敛在 `module.rs` 边界。
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

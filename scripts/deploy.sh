@@ -2,8 +2,8 @@
 # =============================================================================
 # echo-adapter-qq 部署脚本：构建 → 安装 → 重启 Core → 健康检查
 #
-# 把本仓库构建的 `echo-adapter-qq` 插件二进制部署到 EchoAgentCore 的插件
-# 约定目录（~/.local/libexec/echo-agent-core/plugins/echo-adapter-qq/），并
+# 把本仓库构建的 `echo-adapter-qq` 模块二进制部署到 EchoAgentCore 的模块
+# 约定目录（~/.local/libexec/echo-agent-core/modules/echo-adapter-qq/），并
 # （默认）重启 Core 使其以新二进制运行、等待 NapCat 反向 WS 自动重连。
 #
 # 与 Core 自更新脚本（~/.local/libexec/echo-agent-core/update.sh）对齐：
@@ -28,7 +28,7 @@ CORE_SERVICE=${ECHO_CORE_SERVICE:-echo-agent-core.service}
 CORE_STATE_DIR="$STATE_HOME/echo-agent-core"
 LOCK_FILE="$CORE_STATE_DIR/update.lock"
 CORE_CONFIG="$CONFIG_HOME/echo-agent-core/core.toml"
-DEFAULT_TARGET="$PREFIX/libexec/echo-agent-core/plugins/echo-adapter-qq/echo-adapter-qq"
+DEFAULT_TARGET="$PREFIX/libexec/echo-agent-core/modules/echo-adapter-qq/echo-adapter-qq"
 
 REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 
@@ -51,16 +51,16 @@ usage() {
     cat <<'EOF'
 用法：scripts/deploy.sh [选项]
 
-构建本仓库的 echo-adapter-qq 插件并部署到 Core 插件目录；默认重启 Core
+构建本仓库的 echo-adapter-qq 模块并部署到 Core 模块目录；默认重启 Core
 并等待 QQ 恢复。选项：
 
   --no-build        跳过 cargo 构建，直接部署已有产物（配合 --binary 使用）
   --binary <path>   构建产物路径（缺省 <仓库>/target/release/echo-adapter-qq）
-  --target <path>   插件安装路径（缺省读 core.toml 的 [adapters.qq.plugin] command，
-                    兜底 ~/.local/libexec/echo-agent-core/plugins/echo-adapter-qq/echo-adapter-qq）
+  --target <path>   模块安装路径（缺省读 core.toml 的 [adapters.qq.module] command，
+                    兜底 ~/.local/libexec/echo-agent-core/modules/echo-adapter-qq/echo-adapter-qq）
   --no-restart      仅替换二进制，不重启 Core（下次 Core 启动后生效）
   --rollback        回滚：以 <target>.rollback 覆盖安装并（默认）重启 Core
-  --check           只读健康检查（安装状态 / Core / 插件进程 / QQ 连接）
+  --check           只读健康检查（安装状态 / Core / 模块进程 / QQ 连接）
   -h, --help        显示本帮助
 
 退出码：0 成功；1 失败（含已自动回滚）；2 用法错误 / 已有更新在进行。
@@ -105,17 +105,17 @@ try:
 except Exception:
     raise SystemExit(1)
 qq = data.get("adapters", {}).get("qq", {})
-plugin = qq.get("plugin", {}) if isinstance(qq, dict) else {}
-value = plugin.get("command", "") if isinstance(plugin, dict) else ""
+module = qq.get("module", {}) if isinstance(qq, dict) else {}
+value = module.get("command", "") if isinstance(module, dict) else ""
 if isinstance(value, str):
     print(value.strip())
 PY
             )
         fi
         if [[ -z $cmd ]]; then
-            # awk 兜底：仅识别 [adapters.qq.plugin] 段内的 command = …
+            # awk 兜底：仅识别 [adapters.qq.module] 段内的 command = …
             cmd=$(awk '
-                /^\[adapters\.qq\.plugin\]/ { f = 1; next }
+                /^\[adapters\.qq\.module\]/ { f = 1; next }
                 /^\[/ { f = 0 }
                 f && /^[[:space:]]*command[[:space:]]*=/ {
                     sub(/^[^=]*=/, ""); print; exit
@@ -129,7 +129,7 @@ PY
     cmd="${cmd%\'}"; cmd="${cmd#\'}"
     if [[ -n $cmd ]]; then
         if [[ $cmd != /* ]]; then
-            die "core.toml 中插件 command 不是绝对路径（$cmd）；请修正配置或显式传 --target"
+            die "core.toml 中模块 command 不是绝对路径（$cmd）；请修正配置或显式传 --target"
         fi
         printf '%s' "$cmd"
         return 0
@@ -211,7 +211,7 @@ proc_arg0() { # $1=pid → 命令行第一个参数（cmdline 首段）
     head -c 4096 "/proc/$1/cmdline" 2>/dev/null | tr '\0' '\n' | head -n1
 }
 
-plugin_pids() { # $1=目标 exe 路径 → 输出插件进程 PID（按序短路的三重识别）
+module_pids() { # $1=目标 exe 路径 → 输出模块进程 PID（按序短路的三重识别）
     local target=$1 base core_pid pid arg0 exe
     base=$(basename -- "$target"); base=${base:0:15}
     core_pid=$(core_main_pid)
@@ -230,13 +230,13 @@ plugin_pids() { # $1=目标 exe 路径 → 输出插件进程 PID（按序短路
     done
 }
 
-wait_plugin_process() { # 20s 窗口内出现「新版本」进程（starttime ≥ 目标 mtime）且两次采样稳定
+wait_module_process() { # 20s 窗口内出现「新版本」进程（starttime ≥ 目标 mtime）且两次采样稳定
     local target=$1 mtime deadline pid first="" cand start
     mtime=$(stat -c %Y "$target" 2>/dev/null || echo 0)
     deadline=$((SECONDS + 20))
     while (( SECONDS < deadline )); do
         pid=""
-        for cand in $(plugin_pids "$target"); do
+        for cand in $(module_pids "$target"); do
             start=$(proc_start_epoch "$cand" 2>/dev/null || true)
             # 容差 2s：starttime 按 tick 整除 + btime 截断，最多损失 ≈1s
             if [[ -n $start ]] && (( start + 2 >= mtime )); then
@@ -363,13 +363,13 @@ do_check() {
         healthy=1
     fi
 
-    # 进程识别（三重识别见 plugin_pids）；按「启动时刻 vs 目标文件 mtime」
+    # 进程识别（三重识别见 module_pids）；按「启动时刻 vs 目标文件 mtime」
     # 区分 新版运行中 / 旧版未重启。
     local cand mtime_now start fresh="" stale=""
     mtime_now=$(stat -c %Y "$TARGET" 2>/dev/null || echo 0)
-    for cand in $(plugin_pids "$TARGET"); do
+    for cand in $(module_pids "$TARGET"); do
         start=$(proc_start_epoch "$cand" 2>/dev/null || true)
-        # 容差 2s（同 wait_plugin_process：starttime 截断最多损失 ≈1s）
+        # 容差 2s（同 wait_module_process：starttime 截断最多损失 ≈1s）
         if [[ -n $start ]] && (( start + 2 >= mtime_now )); then
             fresh+="$cand "
         else
@@ -381,12 +381,12 @@ do_check() {
         for p in $fresh; do
             ppids+="$p(PPID=$(proc_ppid "$p")) "
         done
-        echo "  插件进程: $ppids"
+        echo "  模块进程: $ppids"
     elif [[ -n ${stale// /} ]]; then
-        echo "  插件进程: 旧版本仍在运行（PID $stale；二进制已替换，重启后生效）"
+        echo "  模块进程: 旧版本仍在运行（PID $stale；二进制已替换，重启后生效）"
         healthy=1
     else
-        echo "  插件进程: 未发现"
+        echo "  模块进程: 未发现"
         healthy=1
     fi
     if ! qq_enabled; then
@@ -413,10 +413,10 @@ rollback_after_failure() { # $1=target $2=原因
     if [[ -x $backup ]]; then
         warn "自动回滚到上一版本并重启…"
         atomic_install "$backup" "$target" && rm -f "$backup" || true
-        if restart_core_and_wait && wait_plugin_process "$target" >/dev/null; then
-            warn "已回滚，Core 与插件已恢复运行。请检查新版本问题后重试部署"
+        if restart_core_and_wait && wait_module_process "$target" >/dev/null; then
+            warn "已回滚，Core 与模块已恢复运行。请检查新版本问题后重试部署"
         else
-            warn "已回滚，但 Core / 插件未确认恢复 —— 请手动检查（journalctl --user -u $CORE_SERVICE）"
+            warn "已回滚，但 Core / 模块未确认恢复 —— 请手动检查（journalctl --user -u $CORE_SERVICE）"
         fi
     else
         warn "无回滚备份（${backup} 不存在）—— 请手动检查与修复"
@@ -447,13 +447,13 @@ deploy_restart_and_verify() {
     fi
 
     local pid
-    if ! pid=$(wait_plugin_process "$target"); then
-        rollback_after_failure "$target" "20s 内未检测到稳定的新插件进程"
+    if ! pid=$(wait_module_process "$target"); then
+        rollback_after_failure "$target" "20s 内未检测到稳定的新模块进程"
         exit 1
     fi
     local ppid
     ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
-    echo "插件进程已就绪（PID $pid，父进程 $ppid）"
+    echo "模块进程已就绪（PID $pid，父进程 $ppid）"
 
     local qq_rc=0
     qq_recover_and_wait || qq_rc=1
@@ -461,7 +461,7 @@ deploy_restart_and_verify() {
     step "部署完成"
     echo "二进制: $target（$(file_size "$target")，sha256:$(short_sha "$target")）"
     echo "Core:   active（PID $(core_main_pid)）"
-    echo "插件:   PID $pid"
+    echo "模块:   PID $pid"
     if (( qq_rc == 0 )); then
         echo "QQ:     反向 WS 已连接"
     else
@@ -482,7 +482,7 @@ deploy_restart_and_verify() {
 # ── 回滚模式 ─────────────────────────────────────────────────────────────────
 do_rollback() {
     local backup="${TARGET}.rollback"
-    step "回滚插件二进制"
+    step "回滚模块二进制"
     [[ -x $backup ]] || die "未找到回滚备份：$backup（无可回滚的上一版本）"
     echo "备份: $backup（$(file_size "$backup")，sha256:$(short_sha "$backup")）"
     if [[ -f $TARGET ]]; then
@@ -514,7 +514,7 @@ do_deploy() {
     [[ -x $BINARY ]] || die "构建产物不存在或不可执行：$BINARY（先运行不带 --no-build，或检查 --binary）"
 
     # 2) 冒烟（stdin 关闭应立即干净退出；仅提示，不阻断）
-    step "安装插件二进制"
+    step "安装模块二进制"
     local smoke_rc=0
     timeout 5 "$BINARY" </dev/null >/dev/null 2>&1 || smoke_rc=$?
     if (( smoke_rc == 0 )); then

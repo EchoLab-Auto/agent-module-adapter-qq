@@ -1,17 +1,17 @@
-//! QQ 插件与 EchoAgent 宿主之间的领域 DTO。
+//! QQ 模块与 EchoAgent 宿主之间的领域 DTO。
 //!
 //! `echo-fabric-arch` v0.14 起只提供 `Contribution::Custom`；这里显式定义
-//! 分类名与载荷，插件与宿主按同一 JSON 形状交换，不再借用框架的领域类型。
+//! 分类名与载荷，模块与宿主按同一 JSON 形状交换，不再借用框架的领域类型。
 
+use echo_module_sdk::Contribution;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use echo_plugin_sdk::Contribution;
 
 /// 聊天平台实例的宿主自定义贡献分类。
 pub const INSTANCE_KIND: &str = "echo-agent.instance";
 
 fn default_category() -> String {
-    "plugin".to_string()
+    "module".to_string()
 }
 
 /// 平台工具的线上声明。
@@ -31,7 +31,7 @@ pub struct ToolContribution {
     pub visible_reply: bool,
 }
 
-/// 插件实例能力位；宿主未声明即拒绝调用。
+/// 模块实例能力位；宿主未声明即拒绝调用。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstanceCapabilities {
     #[serde(default)]
@@ -48,7 +48,7 @@ pub struct InstanceCapabilities {
     pub login: bool,
 }
 
-/// 插件实例的自定义贡献载荷。
+/// 模块实例的自定义贡献载荷。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InstanceContribution {
     pub name: String,

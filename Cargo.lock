@@ -268,7 +268,7 @@ dependencies = [
  "chrono",
  "dashmap",
  "echo-core",
- "echo-plugin-sdk",
+ "echo-module-sdk",
  "echo-server",
  "futures-util",
  "regex",
@@ -295,21 +295,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "echo-plugin-api"
-version = "0.14.0"
-source = "git+https://github.com/EchoLab-Auto/echo-fabric-arch?tag=v0.14.0#0da765be37df2ddb864e991adfa16bfec5a67237"
+name = "echo-module-api"
+version = "0.15.0"
+source = "git+https://github.com/EchoLab-Auto/echo-fabric-arch?tag=v0.15.0#a0f16e09c58e8912c1d7b7206651172b0fee6274"
 dependencies = [
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "echo-plugin-sdk"
-version = "0.14.0"
-source = "git+https://github.com/EchoLab-Auto/echo-fabric-arch?tag=v0.14.0#0da765be37df2ddb864e991adfa16bfec5a67237"
+name = "echo-module-sdk"
+version = "0.15.0"
+source = "git+https://github.com/EchoLab-Auto/echo-fabric-arch?tag=v0.15.0#a0f16e09c58e8912c1d7b7206651172b0fee6274"
 dependencies = [
  "async-trait",
- "echo-plugin-api",
+ "echo-module-api",
  "serde",
  "serde_json",
  "thiserror 2.0.20",

@@ -338,7 +338,7 @@ impl QqAdapter {
             .expect("message hook poisoned") = Some(hook);
     }
 
-    /// 当前消息钩子（插件入口测试 / 集成自检：入站与连接态经它回调）。
+    /// 当前消息钩子（模块入口测试 / 集成自检：入站与连接态经它回调）。
     #[allow(dead_code)]
     pub(crate) fn message_hook(&self) -> Option<Arc<dyn InboundMessageHook>> {
         self.inner
@@ -348,7 +348,7 @@ impl QqAdapter {
             .clone()
     }
 
-    /// 注入宿主媒体登记通道（插件入口在握手完成后调用；入站图片经它登记）。
+    /// 注入宿主媒体登记通道（模块入口在握手完成后调用；入站图片经它登记）。
     pub(crate) fn set_media_store(&self, store: Arc<dyn crate::media::MediaStore>) {
         *self.inner.media_store.lock().expect("media store poisoned") = Some(store);
     }
@@ -1234,7 +1234,7 @@ impl QqAdapter {
 /// - `cached_state`：内部状态槽的同步投影（零 IO）——与旧 getter 同源，
 ///   迁移期两者并存（无双事实来源）；
 /// - `invoke_custom`：method 路由表（方法名与线协议 `InvokeAdapterOp` /
-///   插件协议 `custom op` 同名直通）。写路径内部仍走既有固有 setter
+///   模块协议 `custom op` 同名直通）。写路径内部仍走既有固有 setter
 ///   （管道重建 + ConfigStore 持久化语义不变）。
 impl QqAdapter {
     pub fn cached_state(&self) -> Option<Value> {
@@ -1317,8 +1317,8 @@ impl QqAdapter {
             }
             "get_owner" => Ok(json!({"owner_qq": self.get_owner_qq()})),
             // 状态文档主动拉取（01a §1.3 失效兜底 / 03b §2.3-5「请求重推状态」）：
-            // 返回完整 cached_state；插件 custom 路由在返回后补一次
-            // `report_ui_state` 推送（plugin.rs `"custom"` 臂）。
+            // 返回完整 cached_state；模块 custom 路由在返回后补一次
+            // `report_ui_state` 推送（module.rs `"custom"` 臂）。
             "get_state" => self
                 .cached_state()
                 .ok_or_else(|| AdapterError::Internal("no cached state available".into())),
@@ -1532,7 +1532,7 @@ fn parse_id(payload: &Value, key: &str) -> Result<i64, AdapterError> {
     Err(AdapterError::Internal(format!("{key}: invalid id {value}")))
 }
 
-/// [`SendResult`] → 线格式 JSON（管理方法路由与插件 custom op 的返回承载）。
+/// [`SendResult`] → 线格式 JSON（管理方法路由与模块 custom op 的返回承载）。
 fn send_result_json(result: SendResult) -> Value {
     json!({
         "message_id": result.message_id,

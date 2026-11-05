@@ -1,5 +1,5 @@
-//! 适配器插件入口（P1.7b）：把 [`QqAdapter`] 接到 `echo-plugin-sdk` 的
-//! `PluginHandler` 接口上——宿主经 stdio 拉起本进程后，用
+//! 适配器模块入口（P1.7b）：把 [`QqAdapter`] 接到 `echo-module-sdk` 的
+//! `ModuleHandler` 接口上——宿主经 stdio 拉起本进程后，用
 //! `Invoke("<实例名>:<op>")` 寻址；入站消息与连接态经 `core_api`
 //! 宿主服务回呼。
 //!
@@ -14,7 +14,7 @@
 //! }
 //! ```
 //!
-//! # op 路由（见 `document/adapter-plugin.md` §宿主动作）
+//! # op 路由（见 `document/adapter-module.md` §宿主动作）
 //!
 //! `start` / `stop` / `status` / `send_text` / `send_media` /
 //! `get_groups` / `get_friends` / `custom`（平台专属动作透传：
@@ -22,9 +22,9 @@
 
 use std::sync::{Arc, OnceLock};
 
-use crate::plugin_contract::{InstanceCapabilities, InstanceContribution};
-use echo_plugin_sdk::{Contribution, InvokeOutcome, InvokeRequest};
-use echo_plugin_sdk::{HostCallError, HostClient, PluginHandler};
+use crate::module_contract::{InstanceCapabilities, InstanceContribution};
+use echo_module_sdk::{Contribution, InvokeOutcome, InvokeRequest};
+use echo_module_sdk::{HostCallError, HostClient, ModuleHandler};
 use serde_json::{json, Value};
 
 use crate::config_store::ConfigStore;
@@ -41,29 +41,29 @@ use crate::ui;
 /// 适配器宿主服务名（`HostCall.service`）。
 const CORE_API_SERVICE: &str = "core_api";
 
-/// QQ 适配器插件。
+/// QQ 适配器模块。
 ///
 /// 可 Clone（内部态共享）：`configure` 之后 [`adapter_handle`] 可取到已
 /// 构建的 [`QqAdapter`]（测试 / 集成自检用）。
 ///
-/// [`adapter_handle`]: QqPlugin::adapter_handle
+/// [`adapter_handle`]: QqModule::adapter_handle
 #[derive(Clone)]
-pub struct QqPlugin {
-    state: Arc<QqPluginState>,
+pub struct QqModule {
+    state: Arc<QqModuleState>,
 }
 
-struct QqPluginState {
+struct QqModuleState {
     /// `configure`（Hello 配置）后构建的适配器。
     adapter: OnceLock<Arc<QqAdapter>>,
     /// 握手完成后由 SDK 交付的宿主客户端。
     host: OnceLock<HostClient>,
 }
 
-impl QqPlugin {
-    /// 新插件实例（等待经 `Hello.config` 配置）。
+impl QqModule {
+    /// 新模块实例（等待经 `Hello.config` 配置）。
     pub fn new() -> Self {
         Self {
-            state: Arc::new(QqPluginState {
+            state: Arc::new(QqModuleState {
                 adapter: OnceLock::new(),
                 host: OnceLock::new(),
             }),
@@ -124,7 +124,7 @@ impl QqPlugin {
     ///
     /// `via_custom` 只影响**未知名字的错误码**：直连 op 的未知名是协议层
     /// `unknown_op`，而 `custom` 的未知 method 是平台管理方法表的
-    /// `adapter_error`（调用方据此区分「我发错了 op」与「插件没实现该方法」）。
+    /// `adapter_error`（调用方据此区分「我发错了 op」与「模块没实现该方法」）。
     async fn dispatch(
         &self,
         adapter: &std::sync::Arc<crate::adapter::QqAdapter>,
@@ -173,14 +173,14 @@ impl QqPlugin {
         }
         // 3) 平台管理方法。
         if !via_custom {
-            // 直连 op 走到这里 = 插件没有这个 op（协议层错误，不是管理方法缺失）。
+            // 直连 op 走到这里 = 模块没有这个 op（协议层错误，不是管理方法缺失）。
             return error_outcome("unknown_op", format!("unknown adapter op: {op}"));
         }
         custom_op(adapter, op, payload).await
     }
 }
 
-impl Default for QqPlugin {
+impl Default for QqModule {
     fn default() -> Self {
         Self::new()
     }
@@ -189,7 +189,7 @@ impl Default for QqPlugin {
 /// 宿主下发配置（`Hello.config` 的强类型视图）。
 #[derive(Debug, serde::Deserialize)]
 #[serde(default)]
-struct PluginConfig {
+struct ModuleConfig {
     /// 实例名（= Invoke 前缀；宿主分配，全局唯一）。
     name: String,
     /// 归属人格（显示名 / 会话归属用）。
@@ -207,13 +207,13 @@ struct PluginConfig {
     overrides: Option<toml::Table>,
     /// 已合并的适配器配置。
     ///
-    /// 两种来源：新宿主下发 `shared` + `overrides` 时由本插件合并派生（端口
+    /// 两种来源：新宿主下发 `shared` + `overrides` 时由本模块合并派生（端口
     /// 分配、容器名、compose 全在这里，宿主不认识）；旧宿主直接下发结果，
     /// 本字段原样使用（过渡窗口）。
     config: QqAdapterConfig,
 }
 
-impl Default for PluginConfig {
+impl Default for ModuleConfig {
     fn default() -> Self {
         Self {
             name: DEFAULT_INSTANCE_NAME.to_string(),
@@ -227,7 +227,7 @@ impl Default for PluginConfig {
     }
 }
 
-impl QqPlugin {
+impl QqModule {
     fn instance(&self) -> InstanceContribution {
         let (name, display_name) = match self.state.adapter.get() {
             Some(adapter) => (
@@ -249,7 +249,7 @@ impl QqPlugin {
                 gating: true,
                 login: true,
             },
-            // 插件静态元数据（泛化 P1）：UI 描述符 / 会话标签 / 配置 Schema
+            // 模块静态元数据（泛化 P1）：UI 描述符 / 会话标签 / 配置 Schema
             // ——宿主 AdapterList 原样透传给 Panel 通用渲染器（01a §2）。
             config_schema: Some(ui::config_schema()),
             ui: Some(ui::ui_descriptor()),
@@ -261,7 +261,7 @@ impl QqPlugin {
 
     async fn invoke_op(&self, op: &str, payload: Value) -> InvokeOutcome {
         let Some(adapter) = self.state.adapter.get().cloned() else {
-            return error_outcome("not_configured", "qq plugin received no config");
+            return error_outcome("not_configured", "qq module received no config");
         };
         // `custom` 是宿主侧的**统一入口**：Core 的工具桥
         // （`instance_tools::invoke_management`）与管理面（`InvokeInstanceOp`）
@@ -282,18 +282,17 @@ impl QqPlugin {
         // 直连 op（Core 内部生命周期：`RemoteInstance::start()` 等）。
         self.dispatch(&adapter, op, payload, false).await
     }
-
 }
 
-#[echo_plugin_sdk::async_trait]
-impl PluginHandler for QqPlugin {
+#[echo_module_sdk::async_trait]
+impl ModuleHandler for QqModule {
     async fn configure(&self, config: Value) -> Result<(), String> {
-        let mut parsed: PluginConfig = if config.is_null() {
-            PluginConfig::default()
+        let mut parsed: ModuleConfig = if config.is_null() {
+            ModuleConfig::default()
         } else {
-            serde_json::from_value(config).map_err(|e| format!("invalid qq plugin config: {e}"))?
+            serde_json::from_value(config).map_err(|e| format!("invalid qq module config: {e}"))?
         };
-        // 新宿主只下发原始配置（shared + overrides），**部署形状由本插件算**：
+        // 新宿主只下发原始配置（shared + overrides），**部署形状由本模块算**：
         // 合并 → 分配端口 → 派生容器名 / URL / compose → 落盘。旧宿主下发的
         // `config` 已是成品，原样沿用（过渡窗口）。
         if let (Some(shared), Some(overrides)) = (&parsed.shared, &parsed.overrides) {
@@ -333,10 +332,10 @@ impl PluginHandler for QqPlugin {
             let value = serde_json::to_value(&merged)
                 .map_err(|e| format!("merged config is not serializable: {e}"))?;
             parsed.config = serde_json::from_value(value)
-                .map_err(|e| format!("invalid qq plugin config: {e}"))?;
+                .map_err(|e| format!("invalid qq module config: {e}"))?;
         }
         if let Some(path) = &parsed.state_file {
-            // 宿主下发的配置是基线；插件侧持久化的运行期状态（门控 / 名单 /
+            // 宿主下发的配置是基线；模块侧持久化的运行期状态（门控 / 名单 /
             // owner）覆盖其上——崩溃重启不得回退到默认（安全相关）。
             apply_persisted_state(&mut parsed.config, path);
         }
@@ -380,7 +379,7 @@ impl PluginHandler for QqPlugin {
             // 入站图片登记走宿主媒体库（`store_media`）。
             adapter.set_media_store(Arc::new(HostMediaStore { host: host.clone() }));
         } else {
-            tracing::warn!("qq plugin on_ready before configure; inbound bridge not installed");
+            tracing::warn!("qq module on_ready before configure; inbound bridge not installed");
         }
         let _ = self.state.host.set(host);
         // 初始状态快照（宿主管理读路径在首次操作前即可用）。
@@ -406,7 +405,7 @@ struct HostBridge {
     qq: Arc<QqAdapter>,
 }
 
-#[echo_plugin_sdk::async_trait]
+#[echo_module_sdk::async_trait]
 impl InboundMessageHook for HostBridge {
     async fn on_incoming_message(&self, msg: IncomingMessage) -> Result<(), String> {
         let payload = json!({"message": message_to_wire(&msg)});
@@ -466,12 +465,12 @@ impl InboundMessageHook for HostBridge {
 }
 
 /// 媒体登记通道：图片字节写临时文件 → 宿主 `core_api.store_media`
-/// （同机传 path，字节不过协议帧；见 `document/adapter-plugin.md` §安全边界）。
+/// （同机传 path，字节不过协议帧；见 `document/adapter-module.md` §安全边界）。
 struct HostMediaStore {
     host: HostClient,
 }
 
-#[echo_plugin_sdk::async_trait]
+#[echo_module_sdk::async_trait]
 impl MediaStore for HostMediaStore {
     async fn store_image(&self, bytes: &[u8], mime: &str) -> Result<String, String> {
         static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -532,7 +531,7 @@ fn message_to_wire(msg: &IncomingMessage) -> Value {
     })
 }
 
-/// 读取插件侧持久化的运行期状态（`[adapters.qq]`：gate / filter 名单 /
+/// 读取模块侧持久化的运行期状态（`[adapters.qq]`：gate / filter 名单 /
 /// owner_qq）并合并进宿主下发的配置。
 ///
 /// 只合并**运行期可变**的字段：名单与门控模式、owner。`filter` 的其余
@@ -812,11 +811,11 @@ mod tests {
     use std::time::Duration;
 
     use crate::types::IncomingFile;
-    use echo_plugin_sdk::echo_plugin_api::{
-        Contribution, Hello, HostCallOutcome, HostCallResult, HostToPlugin, Invoke, PluginToHost,
+    use echo_module_sdk::echo_module_api::{
+        Contribution, Hello, HostCallOutcome, HostCallResult, HostToModule, Invoke, ModuleToHost,
         PROTOCOL_NAME, PROTOCOL_VERSION,
     };
-    use echo_plugin_sdk::{serve_io_with, ServeOptions};
+    use echo_module_sdk::{serve_io_with, ServeOptions};
     use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
 
     /// 假宿主：帧读写 + 手机会话（`serve_io_with` 的客户端侧）。
@@ -826,12 +825,12 @@ mod tests {
     }
 
     impl FakeHost {
-        fn start(plugin: QqPlugin) -> (Self, QqPlugin) {
+        fn start(module: QqModule) -> (Self, QqModule) {
             let (server, client) = tokio::io::duplex(256 * 1024);
             let (reader, writer) = tokio::io::split(server);
-            let handle = plugin.clone();
+            let handle = module.clone();
             let session = tokio::spawn(serve_io_with(
-                plugin,
+                module,
                 ServeOptions::default(),
                 reader,
                 writer,
@@ -845,7 +844,7 @@ mod tests {
             )
         }
 
-        async fn send(&mut self, msg: &HostToPlugin) {
+        async fn send(&mut self, msg: &HostToModule) {
             let body = serde_json::to_vec(msg).expect("encode frame");
             let mut frame = Vec::with_capacity(4 + body.len());
             frame.extend_from_slice(&(body.len() as u32).to_le_bytes());
@@ -853,7 +852,7 @@ mod tests {
             self.stream.write_all(&frame).await.expect("write frame");
         }
 
-        async fn recv(&mut self) -> PluginToHost {
+        async fn recv(&mut self) -> ModuleToHost {
             let mut len_bytes = [0u8; 4];
             self.stream
                 .read_exact(&mut len_bytes)
@@ -869,22 +868,22 @@ mod tests {
 
         /// 握手并断言注册的适配器贡献（实例名 + 能力位）。
         async fn handshake(&mut self, config: Value, expected_adapter: &str) {
-            self.send(&HostToPlugin::Hello(Hello {
+            self.send(&HostToModule::Hello(Hello {
                 protocol: PROTOCOL_NAME.to_string(),
                 version: PROTOCOL_VERSION,
-                plugin_id: "qq-plugin-test".to_string(),
+                module_id: "qq-module-test".to_string(),
                 config,
             }))
             .await;
-            assert!(matches!(self.recv().await, PluginToHost::Welcome(_)));
+            assert!(matches!(self.recv().await, ModuleToHost::Welcome(_)));
             match self.recv().await {
-                PluginToHost::Register(register) => {
+                ModuleToHost::Register(register) => {
                     let adapter: InstanceContribution = register
                         .contributions
                         .iter()
                         .find_map(|c| match c {
                             Contribution::Custom { kind, payload, .. }
-                                if kind == crate::plugin_contract::INSTANCE_KIND =>
+                                if kind == crate::module_contract::INSTANCE_KIND =>
                             {
                                 serde_json::from_value(payload.clone()).ok()
                             }
@@ -906,7 +905,7 @@ mod tests {
                 }
                 other => panic!("expected Register, got {other:?}"),
             }
-            assert_eq!(self.recv().await, PluginToHost::Ready);
+            assert_eq!(self.recv().await, ModuleToHost::Ready);
             // `on_ready` 已完成：初始管理面状态快照（`report_ui_state`）是
             // Ready 之后的第一帧（单写者保证顺序）。回执它，保持测试确定。
             let payload = self.answer_host_call("report_ui_state").await;
@@ -919,7 +918,7 @@ mod tests {
 
         /// 发一个 Invoke 并读回结果（自动回执穿插的 HostCall——状态推送等）。
         async fn invoke(&mut self, contribution: &str, payload: Value) -> InvokeOutcome {
-            self.send(&HostToPlugin::Invoke(Invoke {
+            self.send(&HostToModule::Invoke(Invoke {
                 call_id: format!("test:{contribution}"),
                 contribution: contribution.to_string(),
                 ctx: Default::default(),
@@ -928,8 +927,8 @@ mod tests {
             .await;
             for _ in 0..8 {
                 match self.recv().await {
-                    PluginToHost::HostCall(call) => self.answer(call).await,
-                    PluginToHost::InvokeResult(result) => return result.outcome,
+                    ModuleToHost::HostCall(call) => self.answer(call).await,
+                    ModuleToHost::InvokeResult(result) => return result.outcome,
                     other => panic!("expected InvokeResult, got {other:?}"),
                 }
             }
@@ -937,9 +936,9 @@ mod tests {
         }
 
         /// 回执一个 HostCall（测试侧统一接受）。
-        async fn answer(&mut self, call: echo_plugin_sdk::echo_plugin_api::HostCall) {
+        async fn answer(&mut self, call: echo_module_sdk::echo_module_api::HostCall) {
             assert_eq!(call.service, "core_api");
-            self.send(&HostToPlugin::HostCallResult(HostCallResult {
+            self.send(&HostToModule::HostCallResult(HostCallResult {
                 call_id: call.call_id.clone(),
                 outcome: HostCallOutcome::Ok {
                     result: json!({"accepted": true}),
@@ -948,11 +947,11 @@ mod tests {
             .await;
         }
 
-        /// 读一个插件发出的 HostCall 并回执（跳过并回执不匹配的前置调用）。
+        /// 读一个模块发出的 HostCall 并回执（跳过并回执不匹配的前置调用）。
         async fn answer_host_call(&mut self, expected_method: &str) -> Value {
             for _ in 0..8 {
                 match self.recv().await {
-                    PluginToHost::HostCall(call) => {
+                    ModuleToHost::HostCall(call) => {
                         let matched = call.method == expected_method;
                         let payload = call.payload.clone();
                         self.answer(call).await;
@@ -1028,8 +1027,8 @@ mod tests {
     /// 全链路（内存流）：注册 → custom（门控 / owner）→ status →
     /// send_text 失败语义 → 入站投递（HostCall）→ 连接态上报。
     #[tokio::test]
-    async fn plugin_end_to_end_over_duplex() {
-        let (mut host, plugin) = FakeHost::start(QqPlugin::new());
+    async fn module_end_to_end_over_duplex() {
+        let (mut host, module) = FakeHost::start(QqModule::new());
         host.handshake(json!({"name": "qq-test", "persona": "tester"}), "qq-test")
             .await;
 
@@ -1125,7 +1124,7 @@ mod tests {
         }
 
         // 入站投递：hook（on_ready 已装）→ HostCall submit_input。
-        let adapter = plugin.adapter_handle().expect("adapter built");
+        let adapter = module.adapter_handle().expect("adapter built");
         let hook = adapter.message_hook().expect("hook installed by on_ready");
         let deliver =
             tokio::spawn(async move { hook.on_incoming_message(example_message()).await });
@@ -1170,12 +1169,12 @@ mod tests {
 
         // 第一次生命周期：改门控 / owner / 名单 → 落盘。
         {
-            let plugin = QqPlugin::new();
-            plugin
+            let module = QqModule::new();
+            module
                 .configure(base_config.clone())
                 .await
                 .expect("configure");
-            let adapter = plugin.adapter_handle().expect("adapter");
+            let adapter = module.adapter_handle().expect("adapter");
             adapter
                 .invoke_custom("set_gate_mode", json!({"mode": "allowlist"}))
                 .await
@@ -1196,12 +1195,12 @@ mod tests {
         assert!(persisted.contains("allowlist"), "{persisted}");
 
         // 重启：宿主仍下发旧基线（none / owner 0）→ 持久化状态必须胜出。
-        let plugin = QqPlugin::new();
-        plugin
+        let module = QqModule::new();
+        module
             .configure(base_config.clone())
             .await
             .expect("reconfigure");
-        let adapter = plugin.adapter_handle().expect("adapter");
+        let adapter = module.adapter_handle().expect("adapter");
         let gate = adapter
             .invoke_custom("get_gate_mode", Value::Null)
             .await
@@ -1221,12 +1220,12 @@ mod tests {
 
         // 状态文件丢失（模拟被清理）：回退基线，不阻塞启动。
         std::fs::remove_file(&state_file).expect("remove state file");
-        let plugin = QqPlugin::new();
-        plugin
+        let module = QqModule::new();
+        module
             .configure(base_config)
             .await
             .expect("configure without state");
-        let adapter = plugin.adapter_handle().expect("adapter");
+        let adapter = module.adapter_handle().expect("adapter");
         let gate = adapter
             .invoke_custom("get_gate_mode", Value::Null)
             .await
@@ -1247,15 +1246,15 @@ mod tests {
     /// - Panel 点「启动 / 停止 / 状态」 → 同样 `unknown adapter method`
     #[tokio::test]
     async fn custom_op_reaches_every_table() {
-        let plugin = QqPlugin::new();
-        plugin
+        let module = QqModule::new();
+        module
             .configure(json!({"name": "qq-tables", "config": {"gate": {"mode": "none"}}}))
             .await
             .expect("configure");
 
         // 表 2：生命周期与出站（此前在 custom 路径上不可达）。
         for lifecycle in ["status", "start"] {
-            let outcome = plugin
+            let outcome = module
                 .invoke_op("custom", json!({"method": lifecycle, "payload": {}}))
                 .await;
             let rendered = format!("{outcome:?}");
@@ -1265,7 +1264,7 @@ mod tests {
             );
         }
         // 表 3：平台管理方法。
-        let outcome = plugin
+        let outcome = module
             .invoke_op("custom", json!({"method": "get_gate_mode", "payload": {}}))
             .await;
         assert!(
@@ -1273,7 +1272,7 @@ mod tests {
             "管理方法在 custom 路径不可达：{outcome:?}"
         );
         // 未知名：管理表报可读错误（不是 panic，也不是 unknown_op）。
-        let outcome = plugin
+        let outcome = module
             .invoke_op("custom", json!({"method": "no_such_method", "payload": {}}))
             .await;
         assert!(
@@ -1291,8 +1290,8 @@ mod tests {
     /// `unknown adapter method`。
     #[tokio::test]
     async fn custom_op_reaches_tool_table() {
-        let plugin = QqPlugin::new();
-        plugin
+        let module = QqModule::new();
+        module
             .configure(json!({"name": "qq-tools", "config": {"gate": {"mode": "none"}}}))
             .await
             .expect("configure");
@@ -1307,7 +1306,7 @@ mod tests {
             "get_group_member_info",
             "get_group_msg_history",
         ] {
-            let outcome = plugin
+            let outcome = module
                 .invoke_op("custom", json!({"method": tool, "payload": {}}))
                 .await;
             let rendered = format!("{outcome:?}");
@@ -1321,10 +1320,10 @@ mod tests {
     /// 写操作（custom）后推送管理面快照：`report_ui_state` 携带新门控模式。
     #[tokio::test]
     async fn custom_write_pushes_ui_state_snapshot() {
-        let (mut host, _plugin) = FakeHost::start(QqPlugin::new());
+        let (mut host, _module) = FakeHost::start(QqModule::new());
         host.handshake(json!({"name": "qq-ui"}), "qq-ui").await;
 
-        host.send(&HostToPlugin::Invoke(Invoke {
+        host.send(&HostToModule::Invoke(Invoke {
             call_id: "ui:1".to_string(),
             contribution: "qq-ui:custom".to_string(),
             ctx: Default::default(),
@@ -1336,7 +1335,7 @@ mod tests {
         let mut pushed: Option<Value> = None;
         for _ in 0..12 {
             match host.recv().await {
-                PluginToHost::HostCall(call) => {
+                ModuleToHost::HostCall(call) => {
                     let method = call.method.clone();
                     let payload = call.payload.clone();
                     host.answer(call).await;
@@ -1346,7 +1345,7 @@ mod tests {
                         pushed = Some(payload);
                     }
                 }
-                PluginToHost::InvokeResult(_) => got_result = true,
+                ModuleToHost::InvokeResult(_) => got_result = true,
                 other => panic!("unexpected frame {other:?}"),
             }
             if got_result && pushed.is_some() {
@@ -1366,12 +1365,12 @@ mod tests {
     /// 宿主 AdapterList 据此透传，Panel 通用渲染器无需 QQ 专属代码。
     #[tokio::test]
     async fn contribution_carries_ui_metadata() {
-        let plugin = QqPlugin::new();
-        plugin
+        let module = QqModule::new();
+        module
             .configure(json!({"name": "qq-ui"}))
             .await
             .expect("configure ok");
-        let contribution = plugin.instance();
+        let contribution = module.instance();
         let ui = contribution.ui.expect("ui descriptor registered");
         assert_eq!(ui["version"], json!(1));
         assert_eq!(ui["panels"].as_array().map(Vec::len), Some(3));
@@ -1390,10 +1389,10 @@ mod tests {
     /// `report_ui_state` 快照（03b §2.3-5「请求重推状态」）。
     #[tokio::test]
     async fn get_state_custom_op_returns_state_and_pushes() {
-        let (mut host, _plugin) = FakeHost::start(QqPlugin::new());
+        let (mut host, _module) = FakeHost::start(QqModule::new());
         host.handshake(json!({"name": "qq-test"}), "qq-test").await;
 
-        host.send(&HostToPlugin::Invoke(Invoke {
+        host.send(&HostToModule::Invoke(Invoke {
             call_id: "state:1".to_string(),
             contribution: "qq-test:custom".to_string(),
             ctx: Default::default(),
@@ -1405,13 +1404,13 @@ mod tests {
         let mut pushed = false;
         for _ in 0..12 {
             match host.recv().await {
-                PluginToHost::HostCall(call) => {
+                ModuleToHost::HostCall(call) => {
                     if call.method == "report_ui_state" {
                         pushed = true;
                     }
                     host.answer(call).await;
                 }
-                PluginToHost::InvokeResult(res) => match res.outcome {
+                ModuleToHost::InvokeResult(res) => match res.outcome {
                     InvokeOutcome::Ok { result: value, .. } => result = Some(value),
                     other => panic!("get_state must succeed, got {other:?}"),
                 },
@@ -1436,11 +1435,11 @@ mod tests {
     /// → 返回引用 + 临时文件清理。
     #[tokio::test]
     async fn host_media_store_writes_temp_file_and_cleans_up() {
-        let (mut host, plugin) = FakeHost::start(QqPlugin::new());
+        let (mut host, module) = FakeHost::start(QqModule::new());
         host.handshake(json!({"name": "qq-test"}), "qq-test").await;
 
         let store = HostMediaStore {
-            host: plugin
+            host: module
                 .host_handle()
                 .expect("host client installed by on_ready"),
         };
@@ -1451,7 +1450,7 @@ mod tests {
 
         // 宿主侧读到临时文件的原字节后回执引用。
         let temp_path = match host.recv().await {
-            PluginToHost::HostCall(call) => {
+            ModuleToHost::HostCall(call) => {
                 assert_eq!(call.service, "core_api");
                 assert_eq!(call.method, "store_media");
                 assert_eq!(call.payload["mime"], json!("image/png"));
@@ -1460,7 +1459,7 @@ mod tests {
                     std::fs::read(&path).expect("host reads temp file"),
                     vec![1u8, 2, 3]
                 );
-                host.send(&HostToPlugin::HostCallResult(HostCallResult {
+                host.send(&HostToModule::HostCallResult(HostCallResult {
                     call_id: call.call_id.clone(),
                     outcome: HostCallOutcome::Ok {
                         result: json!({"ref": "/media/abc.png"}),
@@ -1491,16 +1490,16 @@ mod tests {
     /// `Hello.config` 非法 → `Failed{invalid_config}`，会话以错误退出。
     #[tokio::test]
     async fn invalid_config_fails_handshake() {
-        let (mut host, _plugin) = FakeHost::start(QqPlugin::new());
-        host.send(&HostToPlugin::Hello(Hello {
+        let (mut host, _module) = FakeHost::start(QqModule::new());
+        host.send(&HostToModule::Hello(Hello {
             protocol: PROTOCOL_NAME.to_string(),
             version: PROTOCOL_VERSION,
-            plugin_id: "qq-plugin-test".to_string(),
+            module_id: "qq-module-test".to_string(),
             config: json!({"name": 5}),
         }))
         .await;
         match host.recv().await {
-            PluginToHost::Failed(failure) => assert_eq!(failure.code, "invalid_config"),
+            ModuleToHost::Failed(failure) => assert_eq!(failure.code, "invalid_config"),
             other => panic!("expected Failed, got {other:?}"),
         }
         let FakeHost { stream, session } = host;

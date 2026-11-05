@@ -186,7 +186,7 @@ impl echo_server::Handler for QqHandler {
 }
 
 impl QqHandler {
-    /// 当前媒体登记通道（插件入口在握手后注入；未注入 = 保留原 URL）。
+    /// 当前媒体登记通道（模块入口在握手后注入；未注入 = 保留原 URL）。
     fn media_store(&self) -> Option<Arc<dyn crate::media::MediaStore>> {
         self.inner
             .media_store
@@ -373,7 +373,7 @@ impl QqHandler {
     /// 标注发送者角色（`metadata.sender_role`）。
     ///
     /// 宿主命令域（`/status`、`/shutdown` 等管理员命令）只认该标注判定
-    /// owner（信任边界 = 插件为用户自装的可信代码；宿主不重复读平台配置）。
+    /// owner（信任边界 = 模块为用户自装的可信代码；宿主不重复读平台配置）。
     fn annotate_sender_role(&self, msg: &mut IncomingMessage) {
         let owner = *self.inner.owner_qq.lock().expect("owner poisoned");
         if owner <= 0 || msg.user_id != owner.to_string() {

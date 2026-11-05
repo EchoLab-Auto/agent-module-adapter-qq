@@ -1,5 +1,5 @@
-//! 媒体登记通道（P1.7c）：插件 → 宿主 `core_api.store_media` 回呼的
-//! 插件侧抽象。
+//! 媒体登记通道（P1.7c）：模块 → 宿主 `core_api.store_media` 回呼的
+//! 模块侧抽象。
 //!
 //! 入站图片下载后不再本地落盘（旧 `media_store` 行为），而是经本通道把
 //! 字节交给宿主的媒体库统一登记（内容寻址命名 + 同目录复用），拿回
@@ -17,7 +17,7 @@ pub fn is_media_ref(value: &str) -> bool {
 
 /// 图片登记：字节 + MIME → `/media/<id>` 引用。
 ///
-/// 实现见 `plugin.rs`（`HostMediaStore`：写临时文件 → `store_media`
+/// 实现见 `module.rs`（`HostMediaStore`：写临时文件 → `store_media`
 /// HostCall（同机传 path，避免大载荷过协议帧）→ 清理临时文件）。
 #[async_trait]
 pub trait MediaStore: Send + Sync {

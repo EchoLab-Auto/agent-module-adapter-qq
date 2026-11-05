@@ -5,16 +5,16 @@
 //! 工具名——它按 [`InstanceContribution::tools`] 原样注册，调用时把参数透传回
 //! 来（`Invoke("<instance>:<工具名>")`），命中本模块的 [`invoke`]。
 //!
-//! 这样新增一个平台（Telegram / Discord…）只需在它的插件里写同样一份声明，
+//! 这样新增一个平台（Telegram / Discord…）只需在它的模块里写同样一份声明，
 //! Core 零改动。
 //!
-//! [`InstanceContribution::tools`]: echo_plugin_api::InstanceContribution::tools
+//! [`InstanceContribution::tools`]: echo_module_api::InstanceContribution::tools
 
-use crate::plugin_contract::ToolContribution;
-use echo_plugin_sdk::InvokeOutcome;
+use crate::module_contract::ToolContribution;
+use echo_module_sdk::InvokeOutcome;
 use serde_json::{json, Value};
 
-use crate::plugin::{error_outcome, ok_result};
+use crate::module::{error_outcome, ok_result};
 use crate::QqAdapter;
 
 /// 工具名清单（宿主注册后用于打「所属包」标签；顺序即声明顺序）。
@@ -309,12 +309,12 @@ pub async fn invoke(adapter: &QqAdapter, op: &str, payload: Value) -> Option<Inv
                 .and_then(Value::as_str)
                 .unwrap_or_default();
             let inner = json!({"target": target, "content": content});
-            crate::plugin::send_text(adapter, &inner).await
+            crate::module::send_text(adapter, &inner).await
         }
         // ── 目录 / 历史：直接转发内部 custom op ─────────────────────────
-        "get_group_list" => crate::plugin::custom_op(adapter, "get_group_list", json!({})).await,
+        "get_group_list" => crate::module::custom_op(adapter, "get_group_list", json!({})).await,
         "get_friend_list" => {
-            crate::plugin::custom_op(adapter, "get_gated_friend_list", json!({})).await
+            crate::module::custom_op(adapter, "get_gated_friend_list", json!({})).await
         }
         "get_group_member_info" => {
             let mut inner = json!({});
@@ -324,7 +324,7 @@ pub async fn invoke(adapter: &QqAdapter, op: &str, payload: Value) -> Option<Inv
                     Err((code, message)) => return Some(error_outcome(&code, message)),
                 }
             }
-            crate::plugin::custom_op(adapter, "get_group_member_info", inner).await
+            crate::module::custom_op(adapter, "get_group_member_info", inner).await
         }
         "get_group_msg_history" => {
             let group_id = match scalar_id(&payload, "group_id") {
@@ -338,7 +338,7 @@ pub async fn invoke(adapter: &QqAdapter, op: &str, payload: Value) -> Option<Inv
             if let Some(since) = payload.get("since_minutes").and_then(Value::as_u64) {
                 inner["since_minutes"] = json!(since);
             }
-            crate::plugin::custom_op(adapter, "get_group_msg_history", inner).await
+            crate::module::custom_op(adapter, "get_group_msg_history", inner).await
         }
         // ── 媒体 / 卡片：`target_type`+`target_id` → 内部 `target` ──────
         "send_file" | "send_json_card" | "send_voice" | "send_image" => {
@@ -352,13 +352,13 @@ pub async fn invoke(adapter: &QqAdapter, op: &str, payload: Value) -> Option<Inv
                     inner[key] = value.clone();
                 }
             }
-            crate::plugin::custom_op(adapter, op, inner).await
+            crate::module::custom_op(adapter, op, inner).await
         }
         _ => return None,
     })
 }
 
-/// `ok_result` 在 `plugin` 模块里；这里再导出一次给调用方复用。
+/// `ok_result` 在 `module` 模块里；这里再导出一次给调用方复用。
 pub fn result_ok(value: Value) -> InvokeOutcome {
     ok_result(value)
 }

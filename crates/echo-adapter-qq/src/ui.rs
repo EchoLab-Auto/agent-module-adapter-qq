@@ -1,8 +1,8 @@
-//! 插件侧静态元数据：UI 描述符 / 会话标签 / 配置 Schema（泛化 P1）。
+//! 模块侧静态元数据：UI 描述符 / 会话标签 / 配置 Schema（泛化 P1）。
 //!
-//! 三份数据经 [`crate::plugin::QqPlugin::adapter`] 填入 `InstanceContribution`，
+//! 三份数据经 [`crate::module::QqModule::adapter`] 填入 `InstanceContribution`，
 //! 随注册下发宿主，再由 AdapterList 原样透传给 Panel 的通用渲染器——
-//! 插件只贡献 schema，渲染逻辑在 Panel（Panel UI 解耦）。
+//! 模块只贡献 schema，渲染逻辑在 Panel（Panel UI 解耦）。
 //!
 //! 形状即契约：UI 描述符按 design/adapter-genericization/01a §2.1（3 panel /
 //! 7 类节点），`bind` 路径与状态文档形状（evidence/00-frozen-interfaces §三
@@ -104,10 +104,10 @@ pub fn session_labels() -> Value {
     json!({ "dm": "QQ 私聊", "group": "QQ 群" })
 }
 
-/// 插件配置 JSON Schema（draft-07 子集；当前仅作声明，Core / Panel v1 不消费）。
+/// 模块配置 JSON Schema（draft-07 子集；当前仅作声明，Core / Panel v1 不消费）。
 ///
-/// 字段对齐插件配置结构（`PluginConfig.config` = `QqAdapterConfig`）。
-/// `bind_address` 的 `default` 照抄 01a §2.2 草案；插件运行期实际缺省为
+/// 字段对齐模块配置结构（`ModuleConfig.config` = `QqAdapterConfig`）。
+/// `bind_address` 的 `default` 照抄 01a §2.2 草案；模块运行期实际缺省为
 /// `"0.0.0.0:3131"`（config.rs `QqServerConfig::default`），01a 标注该值
 /// 「待验证」，此处保持草案原文、留待契约确认后统一。
 pub fn config_schema() -> Value {

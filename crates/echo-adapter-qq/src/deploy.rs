@@ -30,7 +30,7 @@ pub const DEFAULT_INSTANCE: &str = "qq";
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Ports {
-    /// 反向 WS 监听端口（NapCat 连回本插件）。
+    /// 反向 WS 监听端口（NapCat 连回本模块）。
     pub reverse_ws: u16,
     /// OneBot HTTP API 宿主端口。
     pub onebot_http: u16,
@@ -155,7 +155,7 @@ pub fn resolve_ports(config: &toml::Table, id: &str, persisted: Ports) -> Ports 
 ///
 /// 多实例（`id != DEFAULT_INSTANCE`）未显式覆盖 → 由 id / 端口派生
 /// （多容器互异）；默认实例未覆盖 → 沿用配置里的显式值，缺省时不写
-/// （插件默认与迁移前的内置默认一致）。
+/// （模块默认与迁移前的内置默认一致）。
 pub fn derive(
     config: &mut toml::Table,
     overrides: &toml::Table,
