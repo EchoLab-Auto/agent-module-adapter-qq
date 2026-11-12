@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "crates/echo-core",
     "crates/echo-server",
-    "crates/echo-module-adapter-qq",
+    "crates/agent-module-adapter-qq",
 ]
 
 [workspace.package]

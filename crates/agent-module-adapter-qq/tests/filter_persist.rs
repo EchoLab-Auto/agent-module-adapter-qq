@@ -4,8 +4,8 @@
 
 mod common;
 
-use echo_module_adapter_qq::config::QqAdapterConfig;
-use echo_module_adapter_qq::QqAdapter;
+use agent_module_adapter_qq::config::QqAdapterConfig;
+use agent_module_adapter_qq::QqAdapter;
 
 #[test]
 fn update_allowlist_persists_group_members_open() {
@@ -22,7 +22,7 @@ fn update_allowlist_persists_group_members_open() {
     config.filter.allowlist.group_members_open = true;
 
     let adapter = QqAdapter::new(config);
-    adapter.set_config_store(echo_module_adapter_qq::config_store::ConfigStore::new(
+    adapter.set_config_store(agent_module_adapter_qq::config_store::ConfigStore::new(
         file.path().to_path_buf(),
     ));
 
@@ -63,7 +63,7 @@ fn update_allowlist_persists_group_members_open_false_as_is() {
     config.filter.allowlist.group_ids = vec![22];
 
     let adapter = QqAdapter::new(config);
-    adapter.set_config_store(echo_module_adapter_qq::config_store::ConfigStore::new(
+    adapter.set_config_store(agent_module_adapter_qq::config_store::ConfigStore::new(
         file.path().to_path_buf(),
     ));
     adapter.update_allowlist(vec![33], vec![44]);

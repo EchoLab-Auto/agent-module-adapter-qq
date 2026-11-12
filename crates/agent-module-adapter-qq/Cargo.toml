@@ -1,5 +1,5 @@
 [package]
-name = "echo-module-adapter-qq"
+name = "agent-module-adapter-qq"
 description = "QQ/OneBot adapter — reverse-WS server + filter pipeline"
 version.workspace = true
 edition.workspace = true
