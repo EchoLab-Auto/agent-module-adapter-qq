@@ -352,7 +352,11 @@ impl ModuleHandler for QqModule {
     }
 
     fn contributions(&self) -> Vec<Contribution> {
-        vec![self.instance().into_custom()]
+        // 实例 + 技能：技能是**模块**级能力（这个平台的操作知识），不是实例
+        // 的运行时能力位，因此与实例贡献并列上报。
+        let mut contributions = vec![self.instance().into_custom()];
+        contributions.extend(crate::skills::custom_contributions());
+        contributions
     }
 
     async fn invoke(&self, req: InvokeRequest) -> InvokeOutcome {

@@ -9,6 +9,11 @@ use serde_json::Value;
 
 /// 聊天平台实例的宿主自定义贡献分类。
 pub const INSTANCE_KIND: &str = "echo-agent.instance";
+/// 技能（SKILL.md 能力包）的宿主自定义贡献分类。
+///
+/// 与 `INSTANCE_KIND` 并列而不是嵌在实例里：技能是**模块**级能力（这个模块
+/// 带哪些操作知识），不是某个实例的运行时能力位。
+pub const SKILL_KIND: &str = "echo-agent.skill";
 
 fn default_category() -> String {
     "module".to_string()
@@ -73,6 +78,41 @@ impl InstanceContribution {
             kind: INSTANCE_KIND.to_string(),
             name: self.name.clone(),
             payload: serde_json::to_value(self).expect("instance contribution is serializable"),
+        }
+    }
+}
+
+/// 模块贡献的技能（SKILL.md 形态）。
+///
+/// 正文来自 `include_str!`——技能内容随模块二进制走，宿主不需要能读到本机
+/// 文件路径（联邦/容器部署下读不到）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SkillContribution {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    #[serde(default)]
+    pub always: bool,
+    #[serde(default)]
+    pub system: bool,
+    #[serde(default)]
+    pub category: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// 所属包 id：包级门控按它聚合工具与技能。
+    pub package: Option<String>,
+    /// SKILL.md 全文（含 frontmatter）。
+    pub body: String,
+}
+
+impl SkillContribution {
+    /// 编码为框架通用贡献；`name` 与载荷同名（宿主按它做键，不一致会被拒）。
+    pub fn into_custom(self) -> Contribution {
+        Contribution::Custom {
+            kind: SKILL_KIND.to_string(),
+            name: self.name.clone(),
+            payload: serde_json::to_value(self).expect("skill contribution is serializable"),
         }
     }
 }

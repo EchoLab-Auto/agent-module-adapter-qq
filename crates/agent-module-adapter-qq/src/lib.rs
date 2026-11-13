@@ -21,6 +21,7 @@ pub mod media;
 pub mod module;
 pub mod module_contract;
 pub mod napcat;
+pub mod skills;
 pub mod tools;
 pub mod types;
 pub mod ui;
